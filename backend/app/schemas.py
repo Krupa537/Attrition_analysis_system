@@ -1,6 +1,6 @@
 # Simple schemas (can be extended)
 from pydantic import BaseModel
-from typing import List, Any
+from typing import List, Any, Optional
 
 class UploadResponse(BaseModel):
     dataset_id: str
@@ -22,3 +22,16 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     predictions: List[dict]
+
+
+# Auth schemas
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    department: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str

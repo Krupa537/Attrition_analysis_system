@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 import aiofiles
 import io
@@ -15,6 +15,8 @@ import json
 
 from .db import init_db, insert_dataset, insert_analysis, list_analyses, get_analysis
 from .model import train_logistic, predict_from_model
+from .auth import init_auth_db, create_hr_user, authenticate_hr_user, get_hr_user, list_hr_users
+from .schemas import SignupRequest, LoginRequest
 import math
 
 app = FastAPI(title="Attrition Analysis API")
@@ -34,6 +36,7 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 # Initialize database with error handling
 try:
     init_db()
+    init_auth_db()
 except Exception as e:
     print(f"Warning: Database initialization failed: {e}")
     # Continue anyway; database will be created on first use if needed
@@ -95,7 +98,7 @@ async def upload_dataset(file: UploadFile = File(...)):
         'duplicate_count': dup_count
     }
 
-    insert_dataset(dataset_id, file.filename, datetime.utcnow().isoformat(), columns, samples)
+    insert_dataset(dataset_id, file.filename, datetime.now(UTC).isoformat(), columns, samples)
 
     return JSONResponse({'dataset_id': dataset_id, 'columns': columns, 'sample': samples, 'validation': validation})
 
@@ -136,7 +139,7 @@ async def analyze(dataset_id: str, target_column: str = 'Attrition'):
             metrics[k] = None
 
     analysis_id = str(uuid.uuid4())
-    insert_analysis(analysis_id, dataset_id, 'logistic_regression', metrics, artifacts, datetime.utcnow().isoformat())
+    insert_analysis(analysis_id, dataset_id, 'logistic_regression', metrics, artifacts, datetime.now(UTC).isoformat())
 
     return JSONResponse({'analysis_id': analysis_id, 'metrics': metrics, 'artifacts': artifacts})
 
@@ -368,9 +371,121 @@ async def predict(analysis_id: str, records: list):
     return JSONResponse({'predictions': results})
 
 
+@app.get('/api/at_risk_employees/{analysis_id}')
+async def get_at_risk_employees(analysis_id: str, risk_threshold: float = 0.5):
+    """Get employees at risk of attrition based on model predictions"""
+    row = get_analysis(analysis_id)
+    if not row:
+        raise HTTPException(status_code=404, detail='Analysis not found')
+    
+    dataset_id = row.get('dataset_id')
+    artifacts = json.loads(row.get('artifacts_json') or '{}')
+    model_path = artifacts.get('model_path')
+    
+    if not dataset_id or not model_path or not os.path.exists(model_path):
+        raise HTTPException(status_code=404, detail='Required data not found')
+    
+    dataset_path = STORAGE_DIR / f"dataset_{dataset_id}.csv"
+    if not dataset_path.exists():
+        raise HTTPException(status_code=404, detail='Dataset not found')
+    
+    try:
+        # Load full dataset
+        df = pd.read_csv(dataset_path)
+        records = df.to_dict(orient='records')
+        
+        # Get predictions for all employees
+        results = predict_from_model(model_path, records)
+        
+        # Filter for at-risk employees (those with high attrition probability)
+        at_risk = []
+        critical_count = 0
+        
+        for i, result in enumerate(results):
+            if result.get('probability', 0) >= risk_threshold and i < len(df):
+                risk_level = 'Critical' if result['probability'] >= 0.8 else 'High' if result['probability'] >= 0.6 else 'Moderate'
+                if risk_level == 'Critical':
+                    critical_count += 1
+                
+                employee = df.iloc[i].to_dict()
+                at_risk.append({
+                    'index': result['index'],
+                    'attrition_probability': result['probability'],
+                    'risk_level': risk_level,
+                    'employee_data': employee
+                })
+        
+        # Sort by probability (highest risk first)
+        at_risk.sort(key=lambda x: x['attrition_probability'], reverse=True)
+        
+        return JSONResponse({
+            'total_employees': len(df),
+            'at_risk_count': len(at_risk),
+            'critical_count': critical_count,
+            'risk_percentage': (len(at_risk) / len(df) * 100) if len(df) > 0 else 0,
+            'at_risk_employees': at_risk[:50]  # Return top 50 at-risk employees
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to analyze at-risk employees: {e}")
+
+
 @app.get('/')
 async def root():
     return JSONResponse({'status': 'ok', 'message': 'Attrition Analysis API'})
+
+
+# Authentication endpoints for HR
+@app.post('/api/auth/signup')
+async def signup(request: SignupRequest):
+    """Create a new HR user account"""
+    try:
+        if len(request.password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        
+        user = create_hr_user(request.email, request.password, request.full_name, request.department)
+        return JSONResponse(user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/auth/login')
+async def login(request: LoginRequest):
+    """Authenticate HR user"""
+    try:
+        user = authenticate_hr_user(request.email, request.password)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        return JSONResponse(user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/api/auth/user/{user_id}')
+async def get_user(user_id: str):
+    """Get HR user details"""
+    try:
+        user = get_hr_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return JSONResponse(user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/api/auth/users')
+async def list_users():
+    """List all HR users"""
+    try:
+        users = list_hr_users()
+        return JSONResponse(users)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == '__main__':

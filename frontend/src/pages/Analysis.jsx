@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Bar } from 'react-chartjs-2'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js'
 import Insights from './Insights'
+import API from '../api'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -23,7 +24,7 @@ export default function Analysis(){
   async function fetchAnalysis(fetchId){
     setMessage('Loading...')
     try{
-      const res = await fetch(`http://127.0.0.1:8000/api/analysis/${fetchId}`)
+      const res = await fetch(API.getAnalysis(fetchId))
       const data = await res.json()
       if(!res.ok) throw new Error(data.detail || 'Fetch failed')
       const metrics = data.metrics_json || data.metrics
@@ -41,7 +42,7 @@ export default function Analysis(){
 
   async function fetchFeatureImportances(analysisId){
     try{
-      const res = await fetch(`http://127.0.0.1:8000/api/analysis/${analysisId}/feature_importances`)
+      const res = await fetch(API.getFeatureImportances(analysisId))
       if(!res.ok) return
       const data = await res.json()
       const feats = data.features || []
