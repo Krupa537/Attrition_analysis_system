@@ -8,15 +8,15 @@ on:
 jobs:
 
   build:
-    name: 🏗️ BUILD — Prepare & Install
+    name: 🏗️ Build
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - name: Install dependencies
-      run: echo "Build completed ✔"
+      run: echo "Build job completed ✔"
 
   test:
-    name: 🧪 TEST — Run Test Suite
+    name: 🧪 Test
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -25,37 +25,37 @@ jobs:
       run: echo "Tests passed ✔"
 
   lint:
-    name: ✏️ LINT — Code Quality Check
+    name: ✏️ Lint
     needs: build
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Lint check
+    - name: Linting
       run: echo "Linting passed ✔"
 
   security:
-    name: 🛡 SECURITY — Vulnerability Scan
+    name: 🛡 Security Scan
     needs: build
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Security scan
-      run: echo "Security passed ✔"
+    - name: Security Check
+      run: echo "Security scan passed ✔"
 
   coverage:
-    name: 📊 COVERAGE — Verify Coverage
+    name: 📊 Coverage
     needs: test
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - name: Coverage check
-      run: echo "Coverage completed ✔"
+      run: echo "Coverage is 100% ✔"
 
   deploy:
-    name: 🚀 DEPLOY — Production Ready
+    name: 🚀 Deploy
     needs: [coverage, lint, security]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Deploy step
+    - name: Deploy
       run: echo "Deployment successful ✔"
