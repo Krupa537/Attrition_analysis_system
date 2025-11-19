@@ -2,6 +2,8 @@ import React, {useState, useEffect} from 'react'
 import { Bar } from 'react-chartjs-2'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js'
 import Insights from './Insights'
+import AtRiskEmployees from './AtRiskEmployees'
+import API from '../api'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -39,7 +41,7 @@ export default function Upload(){
 
   async function fetchFeatureImportances(analysisId){
     try{
-      const res = await fetch(`http://127.0.0.1:8000/api/analysis/${analysisId}/feature_importances`)
+      const res = await fetch(API.getFeatureImportances(analysisId))
       if(!res.ok) return
       const data = await res.json()
       const feats = data.features || []
@@ -107,7 +109,7 @@ export default function Upload(){
 
     setMessage('Uploading...')
     try{
-      const res = await fetch('http://127.0.0.1:8000/api/upload', { method: 'POST', body: fd })
+      const res = await fetch(API.upload, { method: 'POST', body: fd })
       let data = null
       try {
         data = await res.json()
@@ -140,7 +142,7 @@ export default function Upload(){
         }
         target = chosen
       }
-      const res = await fetch(`http://127.0.0.1:8000/api/analyze?dataset_id=${datasetId}&target_column=${encodeURIComponent(target)}` , { method: 'POST' })
+      const res = await fetch(API.analyze(datasetId, target) , { method: 'POST' })
       let data = null
       try { data = await res.json() } catch(e){ throw new Error(`Analysis failed (status ${res.status})`) }
       if(!res.ok) throw new Error(data.detail || `Analysis failed (status ${res.status})`)
@@ -157,7 +159,7 @@ export default function Upload(){
     if(!analysis?.id) return setMessage('No analysis to fetch')
     setMessage('Fetching analysis...')
     try{
-      const res = await fetch(`http://127.0.0.1:8000/api/analysis/${analysis.id}`)
+      const res = await fetch(API.getAnalysis(analysis.id))
       const data = await res.json()
       if(!res.ok) throw new Error(data.detail || 'Fetch failed')
       // server returns metrics_json and artifacts_json keys
@@ -235,6 +237,7 @@ export default function Upload(){
                   <pre>{JSON.stringify(analysis.artifacts, null, 2)}</pre>
                 </div>
                 <Insights analysis={analysis} features={features} dataset={{columns}} />
+                <AtRiskEmployees analysis={analysis} />
                 <div className="chart-wrap">
                   {renderConfusion()}
                   {renderFeatureImportance()}
@@ -256,21 +259,21 @@ export default function Upload(){
           <div style={{marginTop:12}}>
             <button disabled={!analysis} className="btn btn-primary" onClick={async ()=>{
               if(!analysis) return setMessage('No analysis to download. Run analysis first.')
-                  const url = `http://127.0.0.1:8000/api/download/analysis/${analysis.id}/pdf`
+                  const url = API.downloadPDF(analysis.id)
               await downloadFile(url, `analysis_${analysis.id}.pdf`)
             }}>Download analysis (PDF)</button>
           </div>
           <div style={{marginTop:8}}>
             <button disabled={!analysis} className="btn" onClick={async ()=>{
               if(!analysis) return setMessage('No analysis to download. Run analysis first.')
-                  const url = `http://127.0.0.1:8000/api/download/model/${analysis.id}`
+                  const url = API.downloadModel(analysis.id)
               await downloadFile(url, `model_${analysis.id}.pkl`)
             }}>Download trained model (.pkl)</button>
           </div>
           <div style={{marginTop:8}}>
             <button disabled={!analysis} className="btn" onClick={async ()=>{
               if(!analysis) return setMessage('No analysis to download. Run analysis first.')
-                  const url = `http://127.0.0.1:8000/api/download/predictions/${analysis.id}`
+                  const url = API.downloadPredictions(analysis.id)
               await downloadFile(url, `predictions_${analysis.id}.csv`)
             }}>Download prediction results (.csv)</button>
           </div>
@@ -280,3 +283,4 @@ export default function Upload(){
     </div>
   )
 }
+/* Added UI comment for SE project */
