@@ -4,58 +4,59 @@ on:
   push:
     branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
 
   build:
-    name: 🏗️ Build
+    name: 🏗 Build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Install dependencies
-      run: echo "Build job completed ✔"
+      - uses: actions/checkout@v4
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.10
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
 
   test:
-    name: 🧪 Test
+    name: 🧪 Run Tests
     needs: build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Run tests
-      run: echo "Tests passed ✔"
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Run pytest
+        run: pytest backend/tests -q
 
   lint:
-    name: ✏️ Lint
+    name: ✏️ Linting
     needs: build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Linting
-      run: echo "Linting passed ✔"
+      - uses: actions/checkout@v4
+      - name: Install flake8
+        run: pip install flake8
+      - name: Run flake8
+        run: flake8 backend/app
 
   security:
-    name: 🛡 Security Scan
+    name: 🔐 Security Scan
     needs: build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Security Check
-      run: echo "Security scan passed ✔"
-
-  coverage:
-    name: 📊 Coverage
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Coverage check
-      run: echo "Coverage is 100% ✔"
+      - uses: actions/checkout@v4
+      - name: Install bandit
+        run: pip install bandit
+      - name: Run security scan
+        run: bandit -r backend/app -ll
 
   deploy:
     name: 🚀 Deploy
-    needs: [coverage, lint, security]
+    needs: [ test, lint, security ]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Deploy
-      run: echo "Deployment successful ✔"
+      - name: Dummy Deploy
+        run: echo "Deployment successful! 🚀"
