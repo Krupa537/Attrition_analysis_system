@@ -2,4 +2,3 @@ backend/.venv/
 frontend/node_modules/
 backend/metadata.db
 backend/storage/
-node_modules/
