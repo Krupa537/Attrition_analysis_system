@@ -1,7 +1,11 @@
 // Centralized API configuration
-const API_BASE_URL = 'http://localhost:8000/api';
+// Prefer environment override `VITE_API_BASE`, else fall back to same host:8000
+// This lets Docker/frontend builds inject a different API URL.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:8000/api`).replace(/\/$/, '');
 
 export const API = {
+  // Health
+  health: `${API_BASE_URL}/health`,
   // Auth endpoints
   signup: `${API_BASE_URL}/auth/signup`,
   login: `${API_BASE_URL}/auth/login`,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Auth.css';
 import API from '../api';
@@ -70,6 +70,19 @@ export default function Signup() {
       setLoading(false);
     }
   };
+
+  // Preflight similar to Login
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(API.health);
+        if (!res.ok) throw new Error('Backend unhealthy');
+      } catch (err) {
+        setError('Backend unreachable. Start backend on port 8000 and retry.');
+      }
+    };
+    checkHealth();
+  }, []);
 
   return (
     <div className="auth-container">

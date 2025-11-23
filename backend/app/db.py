@@ -4,10 +4,12 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parents[1] / "metadata.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+DB_TIMEOUT = 30.0  # 30 seconds timeout
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=DB_TIMEOUT)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")  # Enable WAL mode for better concurrency
     return conn
 
 def init_db():

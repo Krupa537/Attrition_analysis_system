@@ -17,6 +17,7 @@ from .db import init_db, insert_dataset, insert_analysis, list_analyses, get_ana
 from .model import train_logistic, predict_from_model
 from .auth import init_auth_db, create_hr_user, authenticate_hr_user, get_hr_user, list_hr_users
 from .schemas import SignupRequest, LoginRequest
+from .email import send_batch_attrition_alerts
 import math
 
 app = FastAPI(title="Attrition Analysis API")
@@ -40,6 +41,19 @@ try:
 except Exception as e:
     print(f"Warning: Database initialization failed: {e}")
     # Continue anyway; database will be created on first use if needed
+
+@app.get('/api/health')
+async def health():
+    """Simple health check used by docker-compose and frontend preflight.
+    Returns status plus counts of datasets/analyses if DB available."""
+    status = {'status': 'ok'}
+    try:
+        from .db import list_analyses
+        rows = list_analyses()
+        status['analysis_count'] = len(rows)
+    except Exception:
+        status['analysis_count'] = None
+    return JSONResponse(status)
 
 @app.post('/api/upload')
 async def upload_dataset(file: UploadFile = File(...)):
@@ -354,7 +368,7 @@ async def analysis_feature_importances(analysis_id: str):
     return JSONResponse({'features': items_sorted})
 
 @app.post('/api/predict')
-async def predict(analysis_id: str, records: list):
+async def predict(analysis_id: str, records: list, send_alerts: bool = True):
     row = get_analysis(analysis_id)
     if not row:
         raise HTTPException(status_code=404, detail='Analysis not found')
@@ -368,11 +382,38 @@ async def predict(analysis_id: str, records: list):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
 
-    return JSONResponse({'predictions': results})
+    # Check for at-risk employees and send alerts if enabled
+    email_status = None
+    if send_alerts:
+        at_risk_employees = []
+        for i, result in enumerate(results):
+            if result.get('probability', 0) >= 0.5:  # Risk threshold
+                risk_level = 'Critical' if result['probability'] >= 0.8 else 'High' if result['probability'] >= 0.6 else 'Moderate'
+                at_risk_employees.append({
+                    'index': result['index'],
+                    'attrition_probability': result['probability'],
+                    'risk_level': risk_level,
+                    'employee_data': records[i] if i < len(records) else {}
+                })
+        
+        # Send alerts to all HR users if there are at-risk employees
+        if at_risk_employees:
+            try:
+                hr_users = list_hr_users()
+                if hr_users:
+                    email_status = send_batch_attrition_alerts(hr_users, at_risk_employees, analysis_id)
+            except Exception as e:
+                print(f"Warning: Failed to send email alerts: {e}")
+
+    response = {'predictions': results}
+    if email_status:
+        response['email_alerts'] = email_status
+    
+    return JSONResponse(response)
 
 
 @app.get('/api/at_risk_employees/{analysis_id}')
-async def get_at_risk_employees(analysis_id: str, risk_threshold: float = 0.5):
+async def get_at_risk_employees(analysis_id: str, risk_threshold: float = 0.5, send_alerts: bool = False):
     """Get employees at risk of attrition based on model predictions"""
     row = get_analysis(analysis_id)
     if not row:
@@ -418,13 +459,28 @@ async def get_at_risk_employees(analysis_id: str, risk_threshold: float = 0.5):
         # Sort by probability (highest risk first)
         at_risk.sort(key=lambda x: x['attrition_probability'], reverse=True)
         
-        return JSONResponse({
+        # Send email alerts to HR users if requested and there are at-risk employees
+        email_status = None
+        if send_alerts and at_risk:
+            try:
+                hr_users = list_hr_users()
+                if hr_users:
+                    email_status = send_batch_attrition_alerts(hr_users, at_risk, analysis_id)
+            except Exception as e:
+                print(f"Warning: Failed to send email alerts: {e}")
+        
+        response = {
             'total_employees': len(df),
             'at_risk_count': len(at_risk),
             'critical_count': critical_count,
             'risk_percentage': (len(at_risk) / len(df) * 100) if len(df) > 0 else 0,
             'at_risk_employees': at_risk[:50]  # Return top 50 at-risk employees
-        })
+        }
+        
+        if email_status:
+            response['email_alerts'] = email_status
+        
+        return JSONResponse(response)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to analyze at-risk employees: {e}")
 
@@ -498,5 +554,5 @@ if __name__ == '__main__':
         # uvicorn may not be available in some environments; surface a helpful message.
         print('To run the API use: uvicorn app.main:app --reload --port 8000')
      #PIPELINE
-/*"Confusion matrix calculation added for SE demo"*/
+# "Confusion matrix calculation added for SE demo"
 

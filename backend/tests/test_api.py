@@ -153,6 +153,144 @@ class TestAPIIntegration(unittest.TestCase):
         self.assertEqual(retrieved_data['id'], analysis_id)
         self.assertEqual(retrieved_data['dataset_id'], dataset_id)
     
+    def test_download_model_workflow(self):
+        """Test downloading trained model"""
+        # Upload and analyze
+        csv_content = b"Age,Department,Attrition,OverTime\n25,Sales,No,Yes\n30,IT,Yes,No\n35,HR,No,No\n40,Sales,Yes,Yes\n28,IT,No,No"
+        
+        upload_response = client.post(
+            "/api/upload",
+            files={"file": ("test.csv", csv_content, "text/csv")}
+        )
+        dataset_id = upload_response.json()['dataset_id']
+        
+        analysis_response = client.post(
+            "/api/analyze",
+            params={
+                "dataset_id": dataset_id,
+                "target_column": "Attrition"
+            }
+        )
+        analysis_id = analysis_response.json()['analysis_id']
+        
+        # Download model
+        model_response = client.get(f"/api/download/model/{analysis_id}")
+        self.assertEqual(model_response.status_code, 200)
+        self.assertEqual(model_response.headers['content-type'], 'application/octet-stream')
+    
+    def test_download_predictions_workflow(self):
+        """Test downloading predictions CSV"""
+        # Upload and analyze
+        csv_content = b"Age,Department,Attrition,OverTime\n25,Sales,No,Yes\n30,IT,Yes,No\n35,HR,No,No\n40,Sales,Yes,Yes\n28,IT,No,No"
+        
+        upload_response = client.post(
+            "/api/upload",
+            files={"file": ("test.csv", csv_content, "text/csv")}
+        )
+        dataset_id = upload_response.json()['dataset_id']
+        
+        analysis_response = client.post(
+            "/api/analyze",
+            params={
+                "dataset_id": dataset_id,
+                "target_column": "Attrition"
+            }
+        )
+        analysis_id = analysis_response.json()['analysis_id']
+        
+        # Download predictions
+        predictions_response = client.get(f"/api/download/predictions/{analysis_id}")
+        self.assertEqual(predictions_response.status_code, 200)
+        self.assertEqual(predictions_response.headers['content-type'], 'text/csv; charset=utf-8')
+        self.assertIn('attachment', predictions_response.headers['content-disposition'])
+    
+    def test_download_pdf_workflow(self):
+        """Test downloading analysis PDF report"""
+        # Upload and analyze
+        csv_content = b"Age,Department,Attrition,OverTime\n25,Sales,No,Yes\n30,IT,Yes,No\n35,HR,No,No\n40,Sales,Yes,Yes\n28,IT,No,No"
+        
+        upload_response = client.post(
+            "/api/upload",
+            files={"file": ("test.csv", csv_content, "text/csv")}
+        )
+        dataset_id = upload_response.json()['dataset_id']
+        
+        analysis_response = client.post(
+            "/api/analyze",
+            params={
+                "dataset_id": dataset_id,
+                "target_column": "Attrition"
+            }
+        )
+        analysis_id = analysis_response.json()['analysis_id']
+        
+        # Download PDF
+        pdf_response = client.get(f"/api/download/analysis/{analysis_id}/pdf")
+        self.assertEqual(pdf_response.status_code, 200)
+        self.assertEqual(pdf_response.headers['content-type'], 'application/pdf')
+    
+
+    def test_at_risk_employees_endpoint(self):
+        """Test at-risk employees endpoint"""
+        # Upload and analyze
+        csv_content = b"Age,Department,Attrition,OverTime\n25,Sales,No,Yes\n30,IT,Yes,No\n35,HR,No,No\n40,Sales,Yes,Yes\n28,IT,No,No\n45,Sales,Yes,Yes\n50,IT,Yes,No"
+        
+        upload_response = client.post(
+            "/api/upload",
+            files={"file": ("test.csv", csv_content, "text/csv")}
+        )
+        dataset_id = upload_response.json()['dataset_id']
+        
+        analysis_response = client.post(
+            "/api/analyze",
+            params={
+                "dataset_id": dataset_id,
+                "target_column": "Attrition"
+            }
+        )
+        analysis_id = analysis_response.json()['analysis_id']
+        
+        # Get at-risk employees
+        risk_response = client.get(f"/api/at_risk_employees/{analysis_id}")
+        self.assertEqual(risk_response.status_code, 200)
+        
+        risk_data = risk_response.json()
+        self.assertIn('total_employees', risk_data)
+        self.assertIn('at_risk_count', risk_data)
+        self.assertIn('critical_count', risk_data)
+        self.assertIn('risk_percentage', risk_data)
+        self.assertIn('at_risk_employees', risk_data)
+        self.assertIsInstance(risk_data['at_risk_employees'], list)
+    
+    def test_at_risk_employees_custom_threshold(self):
+        """Test at-risk employees with custom threshold"""
+        # Upload and analyze
+        csv_content = b"Age,Department,Attrition,OverTime\n25,Sales,No,Yes\n30,IT,Yes,No\n35,HR,No,No\n40,Sales,Yes,Yes\n28,IT,No,No"
+        
+        upload_response = client.post(
+            "/api/upload",
+            files={"file": ("test.csv", csv_content, "text/csv")}
+        )
+        dataset_id = upload_response.json()['dataset_id']
+        
+        analysis_response = client.post(
+            "/api/analyze",
+            params={
+                "dataset_id": dataset_id,
+                "target_column": "Attrition"
+            }
+        )
+        analysis_id = analysis_response.json()['analysis_id']
+        
+        # Get at-risk employees with threshold
+        risk_response = client.get(
+            f"/api/at_risk_employees/{analysis_id}",
+            params={"risk_threshold": 0.3}
+        )
+        self.assertEqual(risk_response.status_code, 200)
+        risk_data = risk_response.json()
+        self.assertIn('at_risk_employees', risk_data)
+    
     def test_feature_importances_available(self):
         """Test that feature importances are available after analysis"""
         # Upload and analyze
@@ -192,4 +330,4 @@ class TestAPIIntegration(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-    /*tests*/
+   

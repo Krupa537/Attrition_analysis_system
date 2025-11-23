@@ -2,11 +2,15 @@ import sqlite3
 from pathlib import Path
 import hashlib
 import secrets
+import time
 
 STORAGE_DIR = Path(__file__).resolve().parents[1] / "storage"
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = STORAGE_DIR / "auth.db"
+
+# Database connection settings to prevent locking
+DB_TIMEOUT = 30.0  # 30 seconds timeout for database operations
 
 
 def hash_password(password: str) -> str:
@@ -28,7 +32,8 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def init_auth_db():
     """Initialize authentication database"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=DB_TIMEOUT)
+    conn.execute("PRAGMA journal_mode=WAL")  # Enable WAL mode for better concurrency
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -48,11 +53,13 @@ def init_auth_db():
 
 def create_hr_user(email: str, password: str, full_name: str, department: str = None):
     """Create a new HR user"""
+    user_id = secrets.token_urlsafe(16)
+    hashed_pwd = hash_password(password)
+    
+    conn = None
     try:
-        user_id = secrets.token_urlsafe(16)
-        hashed_pwd = hash_password(password)
-        
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=DB_TIMEOUT, isolation_level='IMMEDIATE')
+        conn.execute("PRAGMA journal_mode=WAL")
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -61,7 +68,6 @@ def create_hr_user(email: str, password: str, full_name: str, department: str = 
         ''', (user_id, email, hashed_pwd, full_name, department))
         
         conn.commit()
-        conn.close()
         
         return {
             'user_id': user_id,
@@ -71,15 +77,29 @@ def create_hr_user(email: str, password: str, full_name: str, department: str = 
             'status': 'success'
         }
     except sqlite3.IntegrityError:
+        if conn:
+            conn.rollback()
         raise ValueError(f"Email {email} already exists")
+    except sqlite3.OperationalError as e:
+        if conn:
+            conn.rollback()
+        if "locked" in str(e).lower():
+            raise Exception("Database is temporarily busy. Please try again.")
+        raise Exception(f"Database error: {str(e)}")
     except Exception as e:
+        if conn:
+            conn.rollback()
         raise Exception(f"Error creating user: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 
 def authenticate_hr_user(email: str, password: str):
     """Authenticate HR user"""
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=DB_TIMEOUT)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -87,7 +107,6 @@ def authenticate_hr_user(email: str, password: str):
         ''', (email,))
         
         result = cursor.fetchone()
-        conn.close()
         
         if not result:
             return None
@@ -106,12 +125,16 @@ def authenticate_hr_user(email: str, password: str):
             return None
     except Exception as e:
         raise Exception(f"Error authenticating user: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_hr_user(user_id: str):
     """Get HR user by ID"""
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=DB_TIMEOUT)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -119,7 +142,6 @@ def get_hr_user(user_id: str):
         ''', (user_id,))
         
         result = cursor.fetchone()
-        conn.close()
         
         if result:
             user_id, email, full_name, department = result
@@ -132,12 +154,16 @@ def get_hr_user(user_id: str):
         return None
     except Exception as e:
         raise Exception(f"Error getting user: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 
 def list_hr_users():
     """List all HR users"""
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=DB_TIMEOUT)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -145,7 +171,6 @@ def list_hr_users():
         ''')
         
         results = cursor.fetchall()
-        conn.close()
         
         users = []
         for user_id, email, full_name, department in results:
@@ -159,3 +184,6 @@ def list_hr_users():
         return users
     except Exception as e:
         raise Exception(f"Error listing users: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
