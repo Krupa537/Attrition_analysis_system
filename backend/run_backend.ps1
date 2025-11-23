@@ -2,7 +2,9 @@
 # Usage: Open PowerShell in this folder and run: ./run_backend.ps1
 
 param(
-    [int]$Port = 8000
+    [int]$Port = 8000,
+    [string]$BindHost = '0.0.0.0',
+    [switch]$NoReload
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,5 +33,7 @@ Write-Host "Upgrading pip and installing requirements..."
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install -r requirements.txt
 
-Write-Host "Starting uvicorn on port $Port..."
-python -m uvicorn app.main:app --reload --port $Port
+$reloadFlag = if ($NoReload) { '' } else { '--reload' }
+$useReload = -not $NoReload
+Write-Host "Starting uvicorn on ${BindHost}:${Port} (reload: $useReload)..."
+python -m uvicorn app.main:app $reloadFlag --host $BindHost --port $Port
